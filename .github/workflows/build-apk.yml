@@ -22,6 +22,9 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Sync Web Files to Android Assets
         run: |
           mkdir -p android/app/src/main/assets
@@ -29,11 +32,10 @@ jobs:
           if [ -d "assets" ]; then cp -r assets/* android/app/src/main/assets/; fi
           if [ -d "pages" ]; then cp -r pages/* android/app/src/main/assets/; fi
 
-      - name: Build APK with Gradle
+      - name: Build APK
         run: |
           cd android
-          gradle wrapper
-          ./gradlew assembleDebug --stacktrace
+          gradle assembleDebug --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
