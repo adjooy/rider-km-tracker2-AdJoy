@@ -1,619 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Ledger — Rider KM Tracker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<style>
-  :root{
-    --ink:#12151c;
-    --ink-soft:#5b6472;
-    --paper:#f5f2ea;
-    --paper-raised:#fffefb;
-    --steel:#dcd6c6;
-    --steel-line:#c8c0aa;
-    --amber:#dd9a2e;
-    --amber-dark:#b87c1e;
-    --green:#3f9c6d;
-    --green-bg:#e4f3ea;
-    --red:#c74c56;
-    --red-bg:#faeaea;
-    --radius:14px;
-    --shadow: 0 1px 0 rgba(18,21,28,0.05), 0 8px 24px rgba(18,21,28,0.06);
-    font-family:'Public Sans',system-ui,sans-serif;
-  }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:
-      repeating-linear-gradient(180deg, transparent 0 38px, rgba(18,21,28,0.025) 38px 39px),
-      var(--paper);
-    color:var(--ink);
-  }
-  h1,h2,h3{font-family:'Big Shoulders Display',sans-serif; letter-spacing:0.01em; margin:0;}
-  .num{font-family:'IBM Plex Mono',monospace; font-variant-numeric:tabular-nums;}
-
-  /* ---------- top instrument strip ---------- */
-  .dash{
-    background:var(--ink);
-    color:var(--paper);
-    padding:22px clamp(16px,4vw,40px) 26px;
-  }
-  .dash-top{
-    display:flex; justify-content:space-between; align-items:flex-end; gap:16px; flex-wrap:wrap;
-    margin-bottom:18px;
-  }
-  .brand{display:flex; align-items:baseline; gap:12px;}
-  .brand h1{font-size:28px; font-weight:800; text-transform:uppercase; color:#fff;}
-  .brand span{color:var(--amber); font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.12em; text-transform:uppercase;}
-  .dash-actions{display:flex; gap:8px; flex-wrap:wrap;}
-  .odometer-row{
-    display:grid; grid-template-columns:repeat(6,1fr); gap:1px;
-    background:rgba(245,242,234,0.14); border-radius:10px; overflow:hidden;
-  }
-  @media (max-width:900px){ .odometer-row{grid-template-columns:repeat(3,1fr);} }
-  @media (max-width:520px){ .odometer-row{grid-template-columns:repeat(2,1fr);} }
-  .odo{background:var(--ink); padding:14px 16px;}
-  .odo .lbl{font-size:10.5px; text-transform:uppercase; letter-spacing:0.1em; color:#9aa2b1; margin-bottom:6px;}
-  .odo .val{font-size:22px; font-weight:600; color:#fff;}
-  .odo .val.amber{color:var(--amber);}
-  .odo .val.green{color:#7fd6a7;}
-  .odo .val.red{color:#f0a0a8;}
-
-  /* ---------- layout ---------- */
-  .wrap{flex:1; min-width:0; padding:26px clamp(16px,4vw,40px) 60px;}
-  .grid{display:grid; grid-template-columns:repeat(12,1fr); gap:18px;}
-  .c-4{grid-column:span 4;} .c-6{grid-column:span 6;} .c-8{grid-column:span 8;} .c-12{grid-column:span 12;}
-  @media (max-width:980px){ .c-4,.c-6,.c-8{grid-column:span 12;} }
-
-  .card{
-    background:var(--paper-raised); border:1px solid var(--steel);
-    border-radius:var(--radius); padding:20px; box-shadow:var(--shadow);
-  }
-  .card-head{display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap;}
-  .card-head h2{font-size:20px; font-weight:700;}
-  .tag{
-    font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.06em;
-    background:var(--paper); border:1px solid var(--steel-line); color:var(--ink-soft);
-    padding:5px 9px; border-radius:999px;
-  }
-  .tag.locked{color:var(--red); border-color:#e6c3c6; background:var(--red-bg);}
-  .tag.open{color:var(--green); border-color:#c3e2cf; background:var(--green-bg);}
-
-  .lane{
-    border-top:2px dashed var(--steel-line); margin:22px 0;
-  }
-
-  /* ---------- forms ---------- */
-  label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;}
-  input, select{
-    width:100%; padding:10px 12px; border-radius:9px; border:1px solid var(--steel-line);
-    font-size:14px; font-family:'Public Sans',sans-serif; background:var(--paper-raised); color:var(--ink);
-  }
-  input:focus, select:focus{outline:none; border-color:var(--amber); box-shadow:0 0 0 3px rgba(221,154,46,0.18);}
-  .field{margin-bottom:12px;}
-  .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
-  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;}
-  @media (max-width:640px){ .row2,.row3{grid-template-columns:1fr;} }
-  .row4-stats{grid-template-columns:repeat(4,1fr);}
-  @media (max-width:640px){ .row4-stats{grid-template-columns:repeat(2,1fr);} }
-  .odo-row-4{grid-template-columns:repeat(4,1fr);}
-  @media (max-width:640px){ .odo-row-4{grid-template-columns:repeat(2,1fr);} }
-  .filter-row5{grid-template-columns:2fr 1fr 1fr 1fr 1fr;}
-  @media (max-width:900px){ .filter-row5{grid-template-columns:1fr 1fr;} }
-  @media (max-width:480px){ .filter-row5{grid-template-columns:1fr;} }
-
-  button{
-    font-family:'Public Sans',sans-serif; font-weight:700; font-size:13.5px; cursor:pointer;
-    border:none; border-radius:9px; padding:11px 16px; transition:transform .12s ease, box-shadow .12s ease;
-  }
-  button:active{transform:translateY(1px);}
-  button:disabled{opacity:0.45; cursor:not-allowed; transform:none; box-shadow:none;}
-  .btn{background:var(--ink); color:#fff;}
-  .btn:hover{box-shadow:0 6px 16px rgba(18,21,28,0.22);}
-  .btn-amber{background:var(--amber); color:#241a06;}
-  .btn-amber:hover{box-shadow:0 6px 16px rgba(221,154,46,0.35);}
-  .btn-outline{background:transparent; color:var(--ink); border:1px solid var(--steel-line);}
-  .btn-outline:hover{border-color:var(--ink);}
-  .btn-red{background:var(--red); color:#fff;}
-  .btn-red:hover{box-shadow:0 6px 16px rgba(199,76,86,0.32);}
-  .btn-sm{padding:6px 10px; font-size:12px; border-radius:7px;}
-  .btn-xs{padding:4px 8px; font-size:11px; border-radius:6px;}
-  .btn-block{width:100%;}
-  .btn-row{display:flex; gap:8px; flex-wrap:wrap;}
-
-  /* ---------- tables ---------- */
-  .table-scroll{overflow:auto; max-height:min(65vh, 640px); border:1px solid var(--steel); border-radius:11px; -webkit-overflow-scrolling:touch;}
-  table{width:100%; min-width:560px; border-collapse:collapse; font-size:13.5px;}
-  th{
-    position:sticky; top:0; background:var(--paper); text-align:left; font-size:10.5px;
-    text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); padding:10px 12px;
-    border-bottom:1px solid var(--steel-line); white-space:nowrap;
-  }
-  td{padding:10px 12px; border-bottom:1px solid #ece7d9; vertical-align:middle; white-space:nowrap;}
-  @media (max-width:1300px){
-    th, td{padding:9px 9px;}
-    .note-cell{max-width:130px;}
-  }
-  @media (max-width:640px){
-    table{min-width:520px; font-size:12.5px;}
-    th, td{padding:8px 10px;}
-    .note-cell{max-width:100px;}
-  }
-  tr:last-child td{border-bottom:none;}
-  .empty-row td{text-align:center; color:var(--ink-soft); padding:26px 0; font-style:italic;}
-  .badge{font-size:11px; font-weight:700; padding:4px 9px; border-radius:999px; text-transform:uppercase; letter-spacing:0.03em;}
-  .badge.paid{background:var(--green-bg); color:var(--green);}
-  .badge.partial{background:#fdf1de; color:var(--amber-dark);}
-  .badge.unpaid{background:var(--red-bg); color:var(--red);}
-  .note-muted{color:var(--ink-soft); font-size:12px; margin-top:10px; line-height:1.6;}
-  .note-cell{max-width:180px; overflow:hidden; text-overflow:ellipsis; cursor:help;}
-
-  /* ---------- overlay ---------- */
-  .overlay{position:fixed; inset:0; background:rgba(18,21,28,0.6); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; padding:20px; z-index:999;}
-  .overlay.hidden{display:none;}
-  .hidden{display:none !important;}
-
-  /* ---- Auth screen (modern) ---- */
-  #authScreen{
-    background:
-      radial-gradient(circle at 15% 12%, rgba(221,154,46,0.16), transparent 42%),
-      radial-gradient(circle at 85% 88%, rgba(63,156,109,0.14), transparent 40%),
-      var(--ink);
-  }
-  .auth-card{
-    position:relative; width:100%; max-width:400px;
-    background:var(--paper-raised);
-    border-radius:20px;
-    padding:36px 32px 30px;
-    box-shadow:0 24px 60px rgba(0,0,0,0.35), 0 2px 0 rgba(255,255,255,0.6) inset;
-    animation:authIn .45s cubic-bezier(.2,.8,.2,1);
-  }
-  @keyframes authIn{from{opacity:0; transform:translateY(14px) scale(.98);} to{opacity:1; transform:none;}}
-  .auth-badge{
-    width:52px; height:52px; border-radius:14px;
-    background:linear-gradient(135deg, var(--amber), var(--amber-dark));
-    display:flex; align-items:center; justify-content:center;
-    font-size:22px; font-weight:800; color:#241a06;
-    box-shadow:0 8px 18px rgba(221,154,46,0.35);
-    margin-bottom:16px;
-  }
-  .auth-card h2{font-size:23px; margin-bottom:4px; letter-spacing:-0.01em;}
-  .auth-sub{color:var(--ink-soft); font-size:13.5px; line-height:1.5; margin-bottom:24px;}
-  .auth-lock-note{
-    display:flex; align-items:center; gap:8px; margin-top:22px; padding-top:18px;
-    border-top:1px solid var(--steel-line); font-size:11.5px; color:var(--ink-soft);
-  }
-  .overlay-card{width:100%; max-width:380px; background:var(--paper-raised); border-radius:16px; padding:24px; box-shadow:0 24px 60px rgba(0,0,0,0.28); max-height:90vh; overflow-y:auto;}
-  .overlay-card h2{font-size:20px; margin-bottom:6px;}
-  @media (max-width:480px){
-    .overlay{padding:12px;}
-    .overlay-card{padding:18px; border-radius:14px;}
-    .auth-card{padding:26px 22px 24px; border-radius:16px;}
-  }
-
-  ::placeholder{color:#9a927e;}
-
-  /* ---------- app body: left menu column + main content ---------- */
-  .app-body{display:flex; align-items:flex-start; width:100%;}
-  .side-menu{
-    position:sticky; top:0; align-self:flex-start;
-    width:220px; flex:0 0 220px; max-height:100vh; overflow-y:auto;
-    background:var(--paper-raised); border-right:1px solid var(--steel-line);
-    padding:20px 14px; display:flex; flex-direction:column; gap:2px; z-index:60;
-  }
-  .side-menu-head{padding:2px 8px 14px;}
-  .side-menu-head h3{font-size:19px; font-weight:700; text-transform:uppercase; letter-spacing:0.02em;}
-  .menu-item{
-    background:transparent; color:var(--ink); border:none; text-align:left; font-weight:600;
-    padding:10px 12px; border-radius:8px; width:100%;
-  }
-  .menu-item:hover{background:var(--paper);}
-  .menu-divider{border-top:1px solid var(--steel-line); margin:6px 2px;}
-  .menu-toggle-mobile{display:none;}
-
-  @media (max-width:900px){
-    /* below this width there's no room for a left column —
-       the panel becomes a bottom drawer opened by a floating button */
-    .app-body{display:block;}
-    .side-menu{
-      position:fixed; top:auto; bottom:0; left:0; right:0; width:auto; flex:none;
-      max-height:75vh; height:auto;
-      border-right:none; border-top:1px solid var(--steel-line); border-radius:16px 16px 0 0;
-      transform:translateY(110%); transition:transform .25s ease; box-shadow:0 -10px 30px rgba(18,21,28,0.22);
-      z-index:75;
-    }
-    .side-menu.open{transform:translateY(0);}
-    .menu-toggle-mobile{
-      display:block; position:fixed; bottom:16px; right:16px; z-index:76;
-      border-radius:999px; box-shadow:0 10px 24px rgba(18,21,28,0.25);
-    }
-  }
-
-  @media (max-width:480px){
-    .dash-top{align-items:center;}
-    .brand h1{font-size:22px;}
-    .brand{gap:8px; flex-wrap:wrap;}
-    .brand span{font-size:10.5px;}
-  }
-
-  /* ---------- modal ---------- */
-  .modal-close{
-    background:var(--paper); border:1px solid var(--steel-line); color:var(--ink-soft);
-    width:30px; height:30px; padding:0; border-radius:50%; font-size:14px; line-height:1;
-  }
-  .modal-close:hover{color:var(--ink); border-color:var(--ink);}
-
-/* ============================================================
-   ANDROID APP UI REDESIGN — visual layer only
-   Firebase / JS / calculations remain unchanged.
-   ============================================================ */
-:root{
-  --app-bg:#f6f7fb;
-  --app-surface:#ffffff;
-  --app-surface-2:#eef0f5;
-  --app-primary:#d98f24;
-  --app-primary-dark:#b86e0f;
-  --app-text:#17191f;
-  --app-muted:#707784;
-  --app-border:#e3e5eb;
-  --app-shadow:0 6px 24px rgba(20,24,35,.07);
-  --app-radius:18px;
-}
-html{background:var(--app-bg);scroll-behavior:smooth;}
-body{
-  background:var(--app-bg);
-  color:var(--app-text);
-  font-family:'Public Sans',system-ui,sans-serif;
-  padding-bottom:env(safe-area-inset-bottom);
-}
-#appRoot{min-height:100dvh;background:var(--app-bg);}
-.dash{
-  position:sticky;top:0;z-index:50;
-  background:rgba(23,25,31,.96);
-  backdrop-filter:blur(16px);
-  padding:calc(12px + env(safe-area-inset-top)) 16px 14px;
-  box-shadow:0 3px 18px rgba(0,0,0,.15);
-}
-.dash-top{margin:0 0 13px;align-items:center;}
-.brand{align-items:center;gap:9px;}
-.brand h1{
-  font-family:'Public Sans',sans-serif;
-  font-size:22px;font-weight:800;letter-spacing:-.03em;text-transform:none;
-}
-.brand span{
-  color:#aeb4c0;font-size:10px;letter-spacing:.08em;
-  background:rgba(255,255,255,.08);padding:5px 8px;border-radius:999px;
-}
-.odometer-row{
-  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
-  background:none;overflow:visible;
-}
-.odo{
-  background:rgba(255,255,255,.075);
-  border:1px solid rgba(255,255,255,.07);
-  border-radius:14px;padding:10px 11px;
-}
-.odo .lbl{font-size:9px;letter-spacing:.05em;margin-bottom:4px;color:#aeb4c0;}
-.odo .val{font-size:17px;font-weight:700;color:#fff;}
-.wrap{padding:16px 14px 92px;max-width:1180px;margin:auto;}
-.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px;}
-.card{
-  background:var(--app-surface);
-  border:1px solid var(--app-border);
-  border-radius:var(--app-radius);
-  padding:17px;
-  box-shadow:var(--app-shadow);
-}
-.card-head{margin-bottom:13px;}
-.card-head h2{
-  font-family:'Public Sans',sans-serif;
-  font-size:17px;font-weight:800;letter-spacing:-.02em;
-}
-.tag{
-  background:var(--app-surface-2);border:0;color:var(--app-muted);
-  font-size:9px;padding:6px 9px;
-}
-label{font-size:10px;color:var(--app-muted);margin-bottom:6px;}
-input,select{
-  min-height:46px;padding:11px 13px;
-  border:1px solid var(--app-border);
-  background:#fafbfc;border-radius:13px;
-}
-input:focus,select:focus{
-  border-color:var(--app-primary);
-  box-shadow:0 0 0 3px rgba(217,143,36,.13);
-}
-button{border-radius:13px;min-height:44px;}
-.btn{background:#20232b;}
-.btn-amber{background:var(--app-primary);color:#211708;}
-.btn-outline{background:var(--app-surface);border:1px solid var(--app-border);}
-.btn-red{background:#c94d59;}
-.btn-sm{min-height:38px;border-radius:11px;}
-.btn-xs{min-height:32px;}
-.btn-row{gap:8px;}
-.row2,.row3{gap:10px;}
-.row4-stats .odo{
-  background:#20232b !important;border:0;
-}
-.row4-stats .odo .val{font-size:16px;}
-.note-muted{font-size:11px;line-height:1.55;color:var(--app-muted);}
-.table-scroll{
-  border:0;border-radius:14px;box-shadow:none;
-}
-table{font-size:13px;}
-th{background:#f7f8fa;border-bottom:1px solid var(--app-border);}
-td{border-bottom:1px solid #edf0f3;}
-.badge{padding:5px 9px;font-size:9px;}
-.overlay{
-  background:rgba(10,12,17,.55);
-  backdrop-filter:blur(7px);
-  padding:12px;
-}
-.overlay-card{
-  max-width:680px!important;
-  border-radius:22px;
-  padding:20px;
-  border:1px solid rgba(255,255,255,.55);
-  box-shadow:0 22px 60px rgba(0,0,0,.25);
-}
-.modal-close{background:var(--app-surface-2);border:0;width:36px;height:36px;}
-.side-menu{
-  width:228px;flex-basis:228px;
-  background:var(--app-surface);
-  border-right:1px solid var(--app-border);
-  padding:14px 11px;
-}
-.side-menu-head{padding:5px 10px 12px;}
-.side-menu-head h3{
-  font-family:'Public Sans',sans-serif;font-size:13px;
-  text-transform:none;letter-spacing:0;font-weight:800;
-}
-.menu-item{
-  min-height:44px;padding:10px 12px;border-radius:12px;
-  color:var(--app-text);font-size:12px;
-}
-.menu-item:hover{background:var(--app-surface-2);}
-.menu-divider{border-color:var(--app-border);}
-.app-bottom-nav{
-  display:none;
-}
-.app-fab{
-  display:none;
-}
-@media (min-width:901px){
-  .dash{position:relative;}
-}
-@media (max-width:900px){
-  .app-body{display:block;}
-  .side-menu{
-    width:auto;flex:none;
-    left:10px;right:10px;bottom:10px;
-    border:1px solid var(--app-border);
-    border-radius:22px;
-    padding:16px;
-    max-height:78dvh;
-    transform:translateY(120%);
-    background:rgba(255,255,255,.98);
-    box-shadow:0 18px 55px rgba(0,0,0,.22);
-  }
-  .side-menu.open{transform:translateY(0);}
-  .menu-toggle-mobile{display:none!important;}
-  .app-bottom-nav{
-    position:fixed;left:0;right:0;bottom:0;z-index:70;
-    display:grid;grid-template-columns:repeat(4,1fr);
-    min-height:66px;
-    padding:7px 8px calc(7px + env(safe-area-inset-bottom));
-    background:rgba(255,255,255,.96);
-    backdrop-filter:blur(18px);
-    border-top:1px solid var(--app-border);
-    box-shadow:0 -5px 22px rgba(20,24,35,.08);
-  }
-  .app-bottom-nav button{
-    min-height:50px;background:transparent;border:0;
-    color:#777d88;font-size:10px;font-weight:700;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
-    border-radius:14px;
-  }
-  .app-bottom-nav button .nav-icon{font-size:20px;line-height:1;}
-  .app-bottom-nav button.active{
-    color:var(--app-primary-dark);
-    background:#fff6e8;
-  }
-  .app-fab{
-    display:flex;position:fixed;right:18px;bottom:82px;z-index:65;
-    width:58px;height:58px;min-height:58px;border-radius:18px;
-    align-items:center;justify-content:center;
-    background:var(--app-primary);color:#201608;
-    font-size:28px;font-weight:500;
-    box-shadow:0 10px 28px rgba(217,143,36,.35);
-  }
-  .wrap{padding-bottom:98px;}
-  .dash .odometer-row{grid-template-columns:repeat(3,1fr);}
-  .c-4,.c-6,.c-8,.c-12{grid-column:span 12;}
-}
-@media (max-width:560px){
-  .dash{padding-left:12px;padding-right:12px;}
-  .brand h1{font-size:21px;}
-  .brand span{display:none;}
-  .odo{padding:9px 8px;}
-  .odo .lbl{font-size:8px;}
-  .odo .val{font-size:15px;}
-  .wrap{padding:12px 10px 96px;}
-  .card{padding:14px;border-radius:17px;}
-  .row2,.row3{grid-template-columns:1fr;}
-  .row4-stats{grid-template-columns:repeat(2,1fr);}
-  .overlay{align-items:flex-end;padding:0;}
-  .overlay-card{
-    width:100%;max-width:none!important;
-    max-height:92dvh;border-radius:24px 24px 0 0;
-    padding:18px 15px calc(18px + env(safe-area-inset-bottom));
-    animation:sheetIn .22s ease-out;
-  }
-  @keyframes sheetIn{from{transform:translateY(30px);opacity:.6}to{transform:none;opacity:1}}
-}
-
-/* Turn the main entries table into native-looking cards on phones. */
-@media (max-width:700px){
-  .table-scroll{overflow:visible;max-height:none;}
-  #entryRows{display:grid;gap:10px;}
-  #entryRows tr:not(.empty-row){
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:0 14px;
-    padding:12px 13px;
-    background:#fff;
-    border:1px solid var(--app-border);
-    border-radius:16px;
-    box-shadow:0 3px 12px rgba(20,24,35,.045);
-  }
-  #entryRows tr:not(.empty-row) td{
-    display:flex;align-items:center;justify-content:space-between;
-    gap:10px;white-space:normal;min-width:0;
-    padding:6px 0;border:0;
-    font-size:12px;
-  }
-  #entryRows tr:not(.empty-row) td::before{
-    color:#9298a3;font-size:9px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.04em;
-    flex:0 0 auto;
-  }
-  #entryRows tr:not(.empty-row) td:nth-child(1)::before{content:"Date";}
-  #entryRows tr:not(.empty-row) td:nth-child(2)::before{content:"Rider";}
-  #entryRows tr:not(.empty-row) td:nth-child(3)::before{content:"KM";}
-  #entryRows tr:not(.empty-row) td:nth-child(4)::before{content:"Total";}
-  #entryRows tr:not(.empty-row) td:nth-child(5)::before{content:"Paid";}
-  #entryRows tr:not(.empty-row) td:nth-child(6)::before{content:"Pending";}
-  #entryRows tr:not(.empty-row) td:nth-child(7)::before{content:"Balance";}
-  #entryRows tr:not(.empty-row) td:nth-child(8)::before{content:"Status";}
-  #entryRows tr:not(.empty-row) td:nth-child(9)::before{content:"Note";}
-  #entryRows tr:not(.empty-row) td:nth-child(10){
-    grid-column:1/-1;justify-content:flex-end;
-    padding-top:9px;margin-top:4px;border-top:1px solid #edf0f3;
-  }
-  #entryRows tr:not(.empty-row) td:nth-child(10)::before{content:"";}
-  #entryRows tr:not(.empty-row) td:nth-child(9){
-    grid-column:1/-1;
-  }
-  #entryRows .note-cell{max-width:none;overflow:hidden;text-overflow:ellipsis;}
-  #entryRows .empty-row{display:block;}
-  #entryRows .empty-row td{display:block;padding:25px 10px;}
-  #entryRows + *{display:none;}
-}
-
-/* Reports / rider lists become stacked cards too. */
-@media (max-width:700px){
-  .overlay-card table{min-width:0;width:100%;}
-  .overlay-card .table-scroll{overflow:auto;}
-  .overlay-card th,.overlay-card td{padding:9px 7px;font-size:11px;}
-}
-
-
-/* ===== Native Android-style mobile UI v2 ===== */
-:root{
-  --app-bg:#f6f7fb;--app-surface:#fff;--app-text:#17181c;--app-muted:#747780;
-  --app-primary:#e49a18;--app-primary-2:#c97d00;--app-line:#e5e6eb;
-  --app-green:#1c9b6c;--app-red:#d95763;--app-radius:20px;
-}
-html,body{background:var(--app-bg)!important;color:var(--app-text);font-family:"Public Sans",system-ui,sans-serif;}
-body{padding-bottom:0!important;}
-.appRoot,.appRoot *{box-sizing:border-box}
-#appRoot{min-height:100vh;background:var(--app-bg)!important;}
-#appRoot .dash{
-  position:relative;z-index:2; margin:0; padding:20px 16px 22px;
-  background:#202126!important;color:#fff!important;border-radius:0 0 26px 26px;
-  box-shadow:0 5px 18px rgba(0,0,0,.14);border:0!important;
-}
-#appRoot .dash-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
-#appRoot .brand h1{font-size:24px!important;line-height:1.1;margin:0!important;font-weight:800;letter-spacing:-.5px}
-#appRoot .brand span{display:block!important;margin-top:4px!important;color:#aeb0b8!important;font-size:11px!important}
-#appRoot .odometer-row{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px!important}
-#appRoot .odo{min-width:0!important;background:#2d2e34!important;border:1px solid #3b3c43!important;border-radius:15px!important;padding:12px 11px!important;box-shadow:none!important}
-#appRoot .odo .lbl{font-size:9px!important;color:#aaaeb8!important;text-transform:uppercase;letter-spacing:.6px}
-#appRoot .odo .val{font-size:18px!important;line-height:1.15;margin-top:5px!important;font-weight:800;color:#f4f4f5!important}
-#appRoot .odo:nth-child(2) .val,#appRoot .odo:nth-child(6) .val{color:#f0a629!important}
-#appRoot .odo:nth-child(3) .val{color:#72d5ad!important}
-#appRoot .odo:nth-child(4) .val{color:#f08b95!important}
-#appRoot .app-body{display:block!important;padding:0 12px 90px!important;}
-#appRoot .side-menu{display:none!important}
-#appRoot .wrap{display:block!important;width:100%!important;max-width:620px!important;margin:0 auto!important;padding:0!important}
-#appRoot .wrap>.card{background:var(--app-surface)!important;border:1px solid var(--app-line)!important;border-radius:20px!important;box-shadow:0 2px 12px rgba(24,26,32,.06)!important;margin:14px 0!important;padding:17px!important}
-#appRoot .wrap>.card:first-child{display:none}
-#appRoot .wrap>.card:nth-child(2){display:block}
-#appRoot .wrap>.card h2{font-size:19px!important;margin:0 0 14px!important;letter-spacing:-.2px}
-#appRoot .wrap>.card:nth-child(2) h2:before{content:"Recent activity";display:block;font-size:12px;color:var(--app-muted);font-weight:600;margin-bottom:3px}
-#appRoot .wrap>.card:nth-child(2) h2{font-size:19px!important}
-#appRoot input,#appRoot select,#appRoot textarea{min-height:50px!important;border-radius:14px!important;border:1px solid #dedfe5!important;background:#fafbfc!important;font-size:15px!important;box-shadow:none!important}
-#appRoot input:focus,#appRoot select:focus,#appRoot textarea:focus{border-color:#d99014!important;box-shadow:0 0 0 3px rgba(228,154,24,.13)!important;outline:none!important}
-#appRoot label,.field label{font-size:10px!important;color:#777b84!important;font-weight:700!important;letter-spacing:.7px!important}
-#appRoot button{border-radius:14px!important;min-height:46px}
-#appRoot .btn-amber{background:var(--app-primary)!important;color:#171717!important;border:0!important;font-weight:800!important}
-#appRoot .app-fab{position:fixed!important;right:18px!important;bottom:76px!important;width:58px!important;height:58px!important;min-height:58px!important;border-radius:18px!important;background:var(--app-primary)!important;color:#191919!important;border:0!important;box-shadow:0 7px 18px rgba(190,119,7,.28)!important;font-size:30px!important;z-index:50!important}
-#appRoot .app-bottom-nav{position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:70px!important;display:grid!important;grid-template-columns:repeat(4,1fr)!important;align-items:stretch!important;background:rgba(255,255,255,.97)!important;border-top:1px solid #e7e8ec!important;box-shadow:0 -5px 20px rgba(0,0,0,.06)!important;z-index:49!important;padding:5px 7px!important}
-#appRoot .app-bottom-nav button{min-height:58px!important;border:0!important;background:transparent!important;color:#74777e!important;font-size:10px!important;font-weight:700!important;display:flex!important;flex-direction:column!important;align-items:center!important;justify-content:center!important;gap:3px!important;border-radius:16px!important}
-#appRoot .app-bottom-nav button.active{background:#fff5e4!important;color:#a96e0c!important}
-#appRoot .app-bottom-nav .nav-icon{font-size:21px!important;line-height:20px!important;font-family:system-ui!important}
-#appRoot footer.siteCredit{display:none!important}
-/* Entry screen */
-#appRoot.mobile-entry-screen .dash{display:none!important}
-#appRoot.mobile-entry-screen .wrap>.card:first-child{display:block!important}
-#appRoot.mobile-entry-screen .wrap>.card:nth-child(2){display:block!important}
-#appRoot.mobile-entry-screen .app-fab{display:none!important}
-#appRoot.mobile-home-screen .wrap>.card:first-child{display:none!important}
-#appRoot.mobile-home-screen .wrap>.card:nth-child(2){display:block!important}
-/* Mobile entry form */
-#appRoot .wrap>.card:first-child .form-grid{display:grid!important;grid-template-columns:1fr!important;gap:12px!important}
-#appRoot .wrap>.card:first-child .calc-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:9px!important}
-#appRoot .wrap>.card:first-child .calc-box{border-radius:14px!important;padding:12px!important}
-#appRoot .wrap>.card:first-child .actions{display:flex!important;gap:9px!important}
-#appRoot .wrap>.card:first-child .actions button{flex:1!important}
-/* Entry rows as clean cards */
-#appRoot .entry-row{border:1px solid var(--app-line)!important;border-radius:16px!important;background:#fff!important;margin:8px 0!important;padding:13px!important;box-shadow:none!important}
-#appRoot .entry-row td{border:0!important}
-/* dialogs */
-#appRoot .overlay{z-index:100!important}
-#appRoot .overlay .modal{width:min(94vw,620px)!important;max-height:88vh!important;border-radius:24px!important;border:1px solid #e3e4e8!important;box-shadow:0 18px 50px rgba(0,0,0,.22)!important}
-@media(max-width:700px){
-  #appRoot .overlay{align-items:flex-end!important;padding:0!important}
-  #appRoot .overlay .modal{width:100%!important;max-width:none!important;max-height:88vh!important;border-radius:24px 24px 0 0!important;margin:0!important}
-}
-@media(min-width:701px){
-  #appRoot .app-bottom-nav,#appRoot .app-fab{display:none!important}
-  #appRoot .wrap>.card:first-child{display:block}
-}
-</style>
-</head>
-<body>
-
-<!-- ================= BOOT LOADING SCREEN ================= -->
-<div id="bootLoading" style="min-height:100vh; display:flex; align-items:center; justify-content:center; background:var(--ink);">
-  <div style="width:38px; height:38px; border-radius:50%; border:3px solid rgba(221,154,46,0.25); border-top-color:var(--amber); animation:bootSpin .8s linear infinite;"></div>
-</div>
-<style>@keyframes bootSpin{to{transform:rotate(360deg);}}</style>
-
-<!-- ================= AUTH SCREEN =================
-     This page is normally opened from the main Operations Panel,
-     which already handles sign in / sign up. If someone reaches
-     this file directly without being signed in, show a simple
-     notice instead of a duplicate login form. -->
-<div id="authScreen" class="hidden" style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;">
-  <div class="auth-card" style="text-align:center;">
-    <div class="auth-badge" style="margin-left:auto;margin-right:auto;">L</div>
-    <h2>Sign in required</h2>
-    <p class="auth-sub">Please sign in from the main Operations Panel — this section uses that same login.</p>
-  </div>
-</div>
-
-<div id="appRoot" class="hidden mobile-home-screen">
-
-<div id="pinOverlay" class="overlay hidden">
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#ffffff"><title>Ledger — Rider KM Tracker</title><script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script><style>
+:root{--bg:#f5f6f8;--surface:#fff;--surface2:#f0f1f4;--text:#17181c;--muted:#737780;--line:#e4e5e9;--primary:#d99122;--primary2:#b9720d;--green:#35a66f;--red:#d95762;--dark:#202126;--shadow:0 2px 10px rgba(20,20,30,.06);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html{background:#111}body{margin:0;background:var(--bg);color:var(--text);overflow-x:hidden}button,input,select{font:inherit}button{border:0}.hidden{display:none!important}
+#bootLoading{min-height:100dvh;display:grid;place-items:center;background:var(--bg)}.boot-card{text-align:center}.boot-logo{width:56px;height:56px;border-radius:18px;background:var(--dark);color:#fff;display:grid;place-items:center;font-size:26px;font-weight:800;margin:0 auto 12px}.boot-card span{font-size:12px;color:var(--muted)}
+#appRoot{min-height:100dvh}.app-shell{max-width:520px;margin:auto;min-height:100dvh;background:var(--bg);position:relative}.topbar{height:68px;position:sticky;top:0;z-index:40;background:rgba(255,255,255,.95);backdrop-filter:blur(18px);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 16px}.brand-wrap{display:flex;align-items:center;gap:10px}.brand-icon{width:40px;height:40px;border-radius:13px;background:var(--dark);color:#fff;display:grid;place-items:center;font-weight:900}.brand-name{font-size:19px;font-weight:800}.brand-sub{font-size:10px;color:var(--muted)}.top-action{width:40px;height:40px;border-radius:13px;background:var(--surface2);font-size:23px;cursor:pointer}
+.app-content{padding:16px 14px 100px}.app-screen{display:none}.app-screen.active{display:block}.section-title{font-size:18px;font-weight:800;margin:0 2px 11px}.section-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}.link-btn{background:none;color:var(--primary2);font-size:12px;font-weight:800;cursor:pointer}
+.hero{background:var(--dark);color:#fff;border-radius:24px;padding:20px;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,0,0,.12)}.hero-row{display:flex;justify-content:space-between;align-items:end;gap:12px}.hero-label{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#aaacb3}.hero-value{font-size:33px;font-weight:850;margin:6px 0}.hero-sub{font-size:11px;color:#b8bac0}.hero-pill{background:#ffffff14;border-radius:13px;padding:9px;text-align:right}.hero-pill b{display:block;font-size:14px}.hero-pill span{font-size:8px;color:#bbb}.stats-grid,.quick-grid,.report-grid,.more-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stats-grid{margin-bottom:20px}.stat-card,.quick-btn,.report-card,.more-card,.form-card,.list-card{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.stat-card{padding:14px;min-height:80px}.stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:750}.stat-value{font-size:19px;font-weight:800;margin-top:7px}.green{color:var(--green)!important}.red{color:var(--red)!important}.amber{color:var(--primary2)!important}
+.quick-grid{margin-bottom:21px}.quick-btn,.report-card,.more-card{text-align:left;padding:15px;cursor:pointer}.quick-icon,.tile-icon{width:34px;height:34px;border-radius:10px;background:#fff4df;color:var(--primary2);display:grid;place-items:center;font-weight:900;margin-bottom:9px}.quick-btn strong,.report-card strong,.more-card strong{display:block;font-size:13px}.quick-btn span,.report-card span,.more-card span{display:block;font-size:10px;color:var(--muted);margin-top:3px;line-height:1.35}.recent-list{display:flex;flex-direction:column;gap:8px}.recent-item{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center}.recent-title{font-size:13px;font-weight:750}.recent-meta{font-size:10px;color:var(--muted);margin-top:3px}.recent-right{text-align:right}.recent-right strong{font-size:13px;display:block}.mini-status{font-size:8px;font-weight:800;text-transform:uppercase}.mini-status.paid{color:var(--green)}.mini-status.partial{color:var(--primary2)}.mini-status.unpaid{color:var(--red)}.empty-state{padding:28px 16px;background:var(--surface);border:1px dashed #d5d7dc;border-radius:18px;text-align:center;color:var(--muted)}.empty-icon{font-size:24px;color:var(--primary2)}.empty-state strong{display:block;color:var(--text);font-size:14px}.empty-state span{font-size:10px}
+.form-card,.list-card{padding:17px;margin-bottom:14px}.form-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}.form-head h2{font-size:20px;margin:0}.edit-tag{font-size:8px;color:var(--muted);background:var(--surface2);padding:7px 9px;border-radius:9px;text-transform:uppercase;letter-spacing:.07em}.field{margin-bottom:13px}.field label{display:block;font-size:9px;color:#70737b;font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin:0 0 6px 2px}.field input,.field select{width:100%;height:49px;border:1px solid #dedfe4;border-radius:14px;background:#fafbfc;padding:0 13px;outline:0;color:var(--text);font-size:14px}.field input:focus,.field select:focus{border-color:#d59a46;box-shadow:0 0 0 3px #d9912217}.form-grid,.filter-more,.row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}.preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 14px}.preview-card{background:var(--dark);color:#fff;border-radius:13px;padding:11px}.preview-label{font-size:8px;color:#aaa;text-transform:uppercase}.preview-value{font-size:15px;font-weight:800;margin-top:5px}.form-actions{display:grid;grid-template-columns:1fr auto;gap:8px}.btn,.btn-outline,.btn-amber,.btn-red{height:47px;border-radius:14px;padding:0 15px;font-weight:750;cursor:pointer}.btn,.btn-amber{background:var(--primary);color:#fff}.btn-outline{background:#fff;border:1px solid var(--line);color:var(--text)}.btn-red{background:#fbe8eb;color:#c33e4a}.btn-sm{height:40px;border-radius:11px;padding:0 12px;font-size:11px;font-weight:750;cursor:pointer}.btn-xs{height:31px;border-radius:9px;padding:0 9px;font-size:10px}.btn-block{width:100%}.note-muted{font-size:10px;color:var(--muted);line-height:1.5}.search-row{display:grid;grid-template-columns:1fr auto;gap:8px}.list-table{width:100%;border-collapse:separate;border-spacing:0 8px}.list-table thead{display:none}.list-table tbody tr{display:block;background:#fafbfc;border:1px solid var(--line);border-radius:14px;padding:4px 8px}.list-table tbody td{display:none}.list-table tbody td:nth-child(1),.list-table tbody td:nth-child(2),.list-table tbody td:last-child{display:block;padding:5px 2px}.list-table tbody td:nth-child(1){font-size:9px;color:var(--muted)}.list-table tbody td:nth-child(2){font-size:12px;font-weight:800}.list-table tbody td:last-child{padding-top:7px}.list-table .btn-row{display:flex!important;gap:6px}.badge{display:inline-flex;padding:4px 7px;border-radius:8px;font-size:8px;font-weight:800}.badge.paid{background:#e4f6ed;color:#218458}.badge.partial{background:#fff2dc;color:#a7680c}.badge.unpaid{background:#fbe8eb;color:#c33e4a}
+.bottom-nav{position:fixed;z-index:50;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;height:78px;background:#fffffff5;backdrop-filter:blur(18px);border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);padding:7px 8px calc(7px + env(safe-area-inset-bottom))}.bottom-nav button{background:none;color:#777a82;border-radius:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer}.bottom-nav button.active{background:#fff4df;color:var(--primary2)}.nav-icon{font-size:19px;line-height:20px}.nav-label{font-size:9px;font-weight:800}.fab{position:fixed;z-index:51;right:max(18px,calc((100vw - 520px)/2 + 18px));bottom:92px;width:55px;height:55px;border-radius:18px;background:var(--primary);color:#fff;font-size:28px;box-shadow:0 8px 20px #b873142e;cursor:pointer}
+.overlay{position:fixed;z-index:100;inset:0;background:#10111670;display:flex;align-items:flex-end;justify-content:center}.overlay-card{width:100%;max-width:520px;max-height:91dvh;overflow:auto;background:#fff;border-radius:24px 24px 0 0;padding:17px 16px calc(24px + env(safe-area-inset-bottom));box-shadow:0 -10px 30px #0002}.overlay-card:before{content:"";display:block;width:38px;height:4px;border-radius:99px;background:#d8d9dd;margin:0 auto 16px}.card-head{display:flex;align-items:center;justify-content:space-between}.card-head h2{font-size:20px}.modal-close{width:36px;height:36px;border-radius:11px;background:var(--surface2);cursor:pointer}.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.btn-row{display:flex;gap:8px;flex-wrap:wrap}.tag{font-size:9px;padding:5px 8px;border-radius:8px;background:var(--surface2);color:var(--muted)}.tag.open{background:#e4f6ed;color:#218458}.tag.locked{background:#fbe8eb;color:#c33e4a}.lane{height:1px;background:var(--line);margin:14px 0}.table-scroll{overflow:auto}.table-scroll table{width:100%;border-collapse:collapse;min-width:520px}.table-scroll th,.table-scroll td{font-size:10px;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left}.table-scroll th{font-size:8px;color:var(--muted);text-transform:uppercase}.odometer-row{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.odo{background:var(--dark);color:#fff;border-radius:11px;padding:9px}.odo .lbl{font-size:7px;color:#aaa}.odo .val{font-size:13px;font-weight:800;margin-top:4px}.drawer{display:none}
+@media(min-width:700px){.app-shell{box-shadow:0 0 35px #0002;min-height:100dvh}}
+</style></head><body><div id="bootLoading"><div class="boot-card"><div class="boot-logo">L</div><strong>Ledger</strong><div><span>Starting app…</span></div></div></div><div id="appRoot" class="hidden"><div class="app-shell">
+<header class="topbar"><div class="brand-wrap"><div class="brand-icon">L</div><div><div class="brand-name">Ledger</div><div class="brand-sub">Rider KM & Payout Tracker</div></div></div><button class="top-action" onclick="AppNav.more()" aria-label="More">⋮</button></header>
+<main class="app-content">
+<section class="app-screen active" data-screen="home"><div class="hero"><div class="hero-row"><div><div class="hero-label">Total Amount</div><div class="hero-value">৳<span id="statAmount">0.00</span></div><div class="hero-sub">All recorded ride payouts</div></div><div class="hero-pill"><b>৳<span id="statPending">0.00</span></b><span>Pending</span></div></div></div><div class="stats-grid"><div class="stat-card"><div class="stat-label">Total KM</div><div class="stat-value" id="statKm">0.00</div></div><div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value green" id="statPaid">0.00</div></div><div class="stat-card"><div class="stat-label">This Month KM</div><div class="stat-value" id="statMonthKm">0.00</div></div><div class="stat-card"><div class="stat-label">This Month Amount</div><div class="stat-value amber" id="statMonthAmount">0.00</div></div></div><div class="section-title">Quick Actions</div><div class="quick-grid"><button class="quick-btn" onclick="AppNav.openAdd()"><div class="quick-icon">＋</div><strong>Add Ride</strong><span>Record a new entry</span></button><button class="quick-btn" onclick="AppNav.entries()"><div class="quick-icon">▤</div><strong>All Entries</strong><span>Search & manage rides</span></button></div><div class="section-row"><div class="section-title">Recent Entries</div><button class="link-btn" onclick="AppNav.entries()">View all</button></div><div id="recentEntries" class="recent-list"></div></section>
+<section class="app-screen" data-screen="entries"><div class="form-card"><div class="form-head"><h2 id="entryTitle">Add Ride Entry</h2><span class="edit-tag">PIN protected</span></div><div class="field"><label for="entryDate">Date</label><input id="entryDate" type="date" onchange="Entries.preview()"></div><div class="field"><label for="entryRider">Rider</label><select id="entryRider" onchange="Entries.preview()"></select></div><div class="form-grid"><div class="field"><label for="entryKm">KM</label><input id="entryKm" type="number" min="0" step="0.01" placeholder="0.00" oninput="Entries.preview()"></div><div class="field"><label for="entryRate">Rate / KM</label><input id="entryRate" type="number" min="0" step="0.01" value="3.5" oninput="Entries.preview()"></div></div><div class="field"><label for="entryPaid">Paid Amount</label><input id="entryPaid" type="number" min="0" step="0.01" value="0" oninput="Entries.preview()"></div><div class="field"><label for="entryNote">Note</label><input id="entryNote" type="text" placeholder="Optional note"></div><div class="preview-grid"><div class="preview-card"><div class="preview-label">Total</div><div class="preview-value" id="prevTotal">0.00</div></div><div class="preview-card"><div class="preview-label">Pending</div><div class="preview-value red" id="prevPending">0.00</div></div><div class="preview-card"><div class="preview-label">Total Pending</div><div class="preview-value amber" id="prevTotalPending">0.00</div></div><div class="preview-card"><div class="preview-label">Status</div><div class="preview-value amber" id="prevStatus">Unpaid</div></div></div><div class="form-actions"><button class="btn btn-amber" id="entrySaveBtn" onclick="Entries.save()">Save Entry</button><button class="btn-outline" onclick="Entries.resetForm()">Reset</button></div><p class="note-muted">Total = KM × Rate · Pending = Total − Paid. Edit/delete requires the owner PIN.</p></div><div class="list-card"><div class="form-head"><h2>All Entries</h2><span class="edit-tag">History</span></div><div class="search-row"><div class="field" style="margin:0"><input id="fSearch" type="text" placeholder="Search rider or note…" oninput="Entries.render()"></div><button class="btn-outline btn-sm" onclick="Entries.clearFilters()">Clear</button></div><div class="filter-more"><div class="field" style="margin:0"><label for="fRider">Rider</label><select id="fRider" onchange="Entries.render()"></select></div><div class="field" style="margin:0"><label for="fStatus">Status</label><select id="fStatus" onchange="Entries.render()"><option value="">All</option><option value="paid">Paid</option><option value="partial">Partial</option><option value="unpaid">Unpaid</option></select></div></div><div class="field"><label for="fMonth">Month</label><input id="fMonth" type="month" onchange="Entries.render()"></div><div class="table-scroll"><table class="list-table"><thead><tr><th>Date</th><th>Rider</th><th>KM</th><th>Total</th><th>Paid</th><th>Pending</th><th>Total Pending</th><th>Status</th><th>Note</th><th></th></tr></thead><tbody id="entryRows"></tbody></table></div></div></section>
+<section class="app-screen" data-screen="reports"><div class="section-title">Reports</div><div class="report-grid"><button class="report-card" onclick="Menu.open('dailyModal')"><div class="tile-icon">D</div><strong>Daily Report</strong><span>Daily payout summary</span></button><button class="report-card" onclick="Menu.open('weeklyModal')"><div class="tile-icon">W</div><strong>Weekly Report</strong><span>This week's rider totals</span></button><button class="report-card" onclick="Menu.open('monthlyModal')"><div class="tile-icon">M</div><strong>Monthly Summary</strong><span>Monthly payout overview</span></button><button class="report-card" onclick="Reports.openRiderReport()"><div class="tile-icon">R</div><strong>Rider Report</strong><span>Detailed rider history</span></button></div></section>
+<section class="app-screen" data-screen="more"><div class="section-title">More</div><div class="more-grid"><button class="more-card" onclick="Menu.open('riderModal')"><div class="tile-icon">+</div><strong>Riders</strong><span>Add, rename or remove riders</span></button><button class="more-card" onclick="Menu.open('ownerModal')"><div class="tile-icon">⌘</div><strong>Owner PIN</strong><span>Manage protected actions</span></button><button class="more-card" onclick="Menu.open('backupModal')"><div class="tile-icon">↥</div><strong>Backup & Restore</strong><span>Export or restore your data</span></button><button class="more-card" onclick="Menu.open('auditModal')"><div class="tile-icon">✓</div><strong>Audit Log</strong><span>Review activity history</span></button><button class="more-card" onclick="Backup.exportJSON()"><div class="tile-icon">J</div><strong>Backup JSON</strong><span>Download a full backup</span></button><button class="more-card" onclick="Backup.exportCSV()"><div class="tile-icon">C</div><strong>Export CSV</strong><span>Export entry data</span></button></div></section>
+</main><button class="fab" onclick="AppNav.openAdd()" aria-label="Add ride">+</button><nav class="bottom-nav"><button class="active" data-screen="home" onclick="AppNav.home()"><span class="nav-icon">⌂</span><span class="nav-label">Home</span></button><button data-screen="entries" onclick="AppNav.entries()"><span class="nav-icon">▤</span><span class="nav-label">Entries</span></button><button data-screen="reports" onclick="AppNav.reports()"><span class="nav-icon">▥</span><span class="nav-label">Reports</span></button><button data-screen="more" onclick="AppNav.more()"><span class="nav-icon">☰</span><span class="nav-label">More</span></button></nav><div id="siteCredit" style="text-align:center;padding:10px 16px 110px;font-size:10px;color:var(--muted)"></div></div></div><div id="pinOverlay" class="overlay hidden">
   <div class="overlay-card">
     <h2 id="pinOverlayTitle">Owner PIN</h2>
     <p class="note-muted" id="pinOverlayText">Enter the owner PIN to continue.</p>
@@ -786,154 +190,7 @@ body{padding-bottom:0!important;}
   </div>
 </div>
 
-<div class="dash">
-  <div class="dash-top">
-    <div class="brand">
-      <h1>Ledger</h1>
-      <span>Rider KM &amp; Payout Tracker</span>
-    </div>
-  </div>
-  <div class="odometer-row">
-    <div class="odo"><div class="lbl">Total KM</div><div class="val num" id="statKm">0.00</div></div>
-    <div class="odo"><div class="lbl">Total Amount</div><div class="val amber num" id="statAmount">0.00</div></div>
-    <div class="odo"><div class="lbl">Total Paid</div><div class="val green num" id="statPaid">0.00</div></div>
-    <div class="odo"><div class="lbl">Pending</div><div class="val red num" id="statPending">0.00</div></div>
-    <div class="odo"><div class="lbl">This Month KM</div><div class="val num" id="statMonthKm">0.00</div></div>
-    <div class="odo"><div class="lbl">This Month Amount</div><div class="val amber num" id="statMonthAmount">0.00</div></div>
-  </div>
-</div>
-
-<button class="menu-toggle-mobile btn-amber" onclick="Menu.toggle()">☰ Menu</button>
-
-<div class="app-body">
-<aside class="side-menu" id="sideMenu">
-  <div class="side-menu-head"><h3>Menu</h3></div>
-  <button class="menu-item session-unlock-btn" onclick="Menu.action(PinSystem.unlock)">Unlock Owner Access</button>
-  <button class="menu-item session-lock-btn" onclick="Menu.action(PinSystem.lock)">Lock Owner Access</button>
-  <button class="menu-item" onclick="Menu.action(Backup.exportJSON)">Backup JSON</button>
-  <button class="menu-item" onclick="Menu.action(Backup.exportCSV)">Export CSV</button>
-  <div class="menu-divider"></div>
-  <button class="menu-item" onclick="Menu.open('riderModal')">Add Rider</button>
-  <button class="menu-item" onclick="Menu.open('ownerModal')">Owner Panel</button>
-  <div class="menu-divider"></div>
-  <button class="menu-item" onclick="Menu.open('dailyModal')">Daily Fuel Cost Report</button>
-  <button class="menu-item" onclick="Menu.open('weeklyModal')">Weekly Report</button>
-  <button class="menu-item" onclick="Menu.open('monthlyModal')">Monthly Summary</button>
-  <button class="menu-item" onclick="Reports.openRiderReport()">Rider Report</button>
-  <button class="menu-item" onclick="Menu.open('backupModal')">Backup &amp; Restore</button>
-  <button class="menu-item" onclick="Menu.open('auditModal')">Audit Log</button>
-  <div class="menu-divider"></div>
-  <button class="menu-item" id="accountEmailLabel" style="color:var(--ink-soft); font-weight:600; cursor:default;" onclick="event.stopPropagation()"></button>
-  <button class="menu-item" style="color:var(--red);" onclick="Menu.action(Auth.logout)">Log Out</button>
-</aside>
-
-<div class="wrap">
-  <div class="grid">
-
-    <!-- Entry form -->
-    <div class="card c-12">
-      <div class="card-head"><h2 id="entryTitle">Add Ride Entry</h2></div>
-      <div class="row2">
-        <div class="field"><label for="entryDate">Date</label><input id="entryDate" type="date" onchange="Entries.preview()" /></div>
-        <div class="field"><label for="entryRider">Rider</label><select id="entryRider" onchange="Entries.preview()"></select></div>
-      </div>
-      <div class="row3">
-        <div class="field"><label for="entryKm">KM</label><input id="entryKm" type="number" min="0" step="0.01" placeholder="0.00" oninput="Entries.preview()" /></div>
-        <div class="field"><label for="entryRate">Rate / KM</label><input id="entryRate" type="number" min="0" step="0.01" value="3.5" oninput="Entries.preview()" /></div>
-        <div class="field"><label for="entryPaid">Paid Amount</label><input id="entryPaid" type="number" min="0" step="0.01" value="0" oninput="Entries.preview()" /></div>
-      </div>
-      <div class="field"><label for="entryNote">Note</label><input id="entryNote" type="text" placeholder="Optional note" /></div>
-      <div class="row3 row4-stats">
-        <div class="odo" style="background:var(--ink); border-radius:10px;"><div class="lbl">Total</div><div class="val num" id="prevTotal">0.00</div></div>
-        <div class="odo" style="background:var(--ink); border-radius:10px;"><div class="lbl">Pending</div><div class="val red num" id="prevPending">0.00</div></div>
-        <div class="odo" style="background:var(--ink); border-radius:10px;"><div class="lbl">Total Pending</div><div class="val amber num" id="prevTotalPending">0.00</div></div>
-        <div class="odo" style="background:var(--ink); border-radius:10px;"><div class="lbl">Status</div><div class="val amber" id="prevStatus">Unpaid</div></div>
-      </div>
-      <div class="btn-row" style="margin-top:16px;">
-        <button class="btn btn-amber" id="entrySaveBtn" onclick="Entries.save()">Save Entry</button>
-        <button class="btn-outline" onclick="Entries.resetForm()">Reset</button>
-      </div>
-      <p class="note-muted">Total = KM × Rate. Pending = Total − Paid. Editing or deleting an entry requires owner PIN unlock.</p>
-    </div>
-
-    <!-- Entries table -->
-    <div class="card c-12">
-      <div class="card-head">
-        <h2>All Entries</h2>
-        <span class="tag">Edit / Delete Protected</span>
-      </div>
-      <div class="row3 filter-row5" style="gap:10px;">
-        <div class="field"><label for="fSearch">Search</label><input id="fSearch" type="text" placeholder="Rider or note…" oninput="Entries.render()" /></div>
-        <div class="field"><label for="fRider">Rider</label><select id="fRider" onchange="Entries.render()"></select></div>
-        <div class="field"><label for="fMonth">Month</label><input id="fMonth" type="month" onchange="Entries.render()" /></div>
-        <div class="field">
-          <label for="fStatus">Status</label>
-          <select id="fStatus" onchange="Entries.render()">
-            <option value="">All</option><option value="paid">Paid</option><option value="partial">Partial</option><option value="unpaid">Unpaid</option>
-          </select>
-        </div>
-        <div class="field"><label>&nbsp;</label><button class="btn-outline btn-block" onclick="Entries.clearFilters()">Clear</button></div>
-      </div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Date</th><th>Rider</th><th>KM</th><th>Total</th><th>Paid</th><th>Pending</th><th>Total Pending</th><th>Status</th><th>Note</th><th></th></tr></thead>
-          <tbody id="entryRows"></tbody>
-        </table>
-      </div>
-    </div>
-
-  </div>
-</div>
-</div><!-- /.app-body -->
-
-
-<!-- Android-style navigation -->
-<button class="app-fab" aria-label="Add ride entry"
-  onclick="AppNav.entries(document.querySelector('.app-bottom-nav button:nth-child(2)'));setTimeout(()=>document.getElementById('entryKm').focus(),450);">+</button>
-
-<nav class="app-bottom-nav" aria-label="Main navigation">
-  <button class="active" onclick="AppNav.home(this)">
-    <span class="nav-icon">⌂</span><span>Home</span>
-  </button>
-  <button onclick="AppNav.entries(this)">
-    <span class="nav-icon">▤</span><span>Entries</span>
-  </button>
-  <button onclick="AppNav.reports(this)">
-    <span class="nav-icon">▥</span><span>Reports</span>
-  </button>
-  <button onclick="AppNav.more(this)">
-    <span class="nav-icon">☰</span><span>More</span>
-  </button>
-</nav>
-
-<footer id="siteCredit" style="text-align:center; padding:18px 16px 26px; font-size:12px; color:var(--ink-soft); letter-spacing:0.01em;"></footer>
-
-</div><!-- /#appRoot -->
-
-
-<script>
-/* Android-style navigation helpers — does not touch data/business logic. */
-const AppNav = (() => {
-  function root(){ return document.getElementById('appRoot'); }
-  function setActive(btn){ document.querySelectorAll('.app-bottom-nav button').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); }
-  function home(btn){
-    setActive(btn); root().classList.remove('mobile-entry-screen'); root().classList.add('mobile-home-screen');
-    window.scrollTo({top:0,behavior:'smooth'});
-  }
-  function entries(btn){
-    setActive(btn); root().classList.remove('mobile-home-screen'); root().classList.add('mobile-entry-screen');
-    setTimeout(()=>{ const card=root().querySelector('.wrap>.card:first-child'); if(card) card.scrollIntoView({behavior:'smooth',block:'start'}); },30);
-  }
-  function reports(btn){
-    setActive(btn);
-    if(typeof Menu!=='undefined' && Menu.open) Menu.open('weeklyModal');
-  }
-  function more(btn){ setActive(btn); if(typeof Menu!=='undefined' && Menu.toggle) Menu.toggle(); }
-  return {home,entries,reports,more};
-})();
-</script>
-
-<script>
+<aside id="sideMenu" class="drawer"></aside><script>
 /* ============================================================
    FIREBASE — auth + per-user cloud storage
    ============================================================ */
@@ -949,34 +206,27 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const fbAuth = firebase.auth();
 const fbDb = firebase.firestore();
-// Persist the session across page reloads and browser restarts.
-// The user stays signed in until they explicitly log out.
 fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
-
-/* This page has no login form of its own — sign in happens in the main
-   Operations Panel and Firebase shares that session. So this module only
-   needs to react to the session and offer log out. */
 const Auth = (() => {
-  async function logout(){
-    if(!confirm('Log out of your account?')) return;
-    await fbAuth.signOut();
-  }
-
+  let attempted = false;
   fbAuth.onAuthStateChanged(async (user) => {
-    document.getElementById('bootLoading').classList.add('hidden');
-    if(user){
-      document.getElementById('authScreen').classList.add('hidden');
-      document.getElementById('appRoot').classList.remove('hidden');
-      const label = document.getElementById('accountEmailLabel');
-      if(label) label.textContent = user.displayName ? `${user.displayName} · ${user.email}` : user.email;
-      await DataStore.load();
-    } else {
-      document.getElementById('appRoot').classList.add('hidden');
-      document.getElementById('authScreen').classList.remove('hidden');
+    if (!user) {
+      if (attempted) return;
+      attempted = true;
+      try { await fbAuth.signInAnonymously(); }
+      catch (e) {
+        console.error('Anonymous auth failed:', e);
+        document.getElementById('bootLoading')?.classList.add('hidden');
+        document.getElementById('appRoot')?.classList.remove('hidden');
+        await DataStore.load();
+      }
+      return;
     }
+    document.getElementById('bootLoading')?.classList.add('hidden');
+    document.getElementById('appRoot')?.classList.remove('hidden');
+    await DataStore.load();
   });
-
-  return { logout };
+  return { logout: async () => {} };
 })();
 
 /* ============================================================
@@ -2084,6 +1334,7 @@ const App = {
     auditRows();
     Entries.preview();
     PinSystem.updateSessionUI();
+    AppNav.renderRecent();
   },
   renderAuditLog: auditRows
 };
@@ -2096,6 +1347,31 @@ document.getElementById('siteCredit').textContent = creditLine();
 
 /* DataStore.load() is now triggered automatically by Auth.onAuthStateChanged
    once the user is signed in — see the Auth module above. */
-</script>
-</body>
-</html>
+
+
+/* ===================== MOBILE APP NAVIGATION ===================== */
+const AppNav = (() => {
+  function buttons(){ return [...document.querySelectorAll('.bottom-nav button[data-screen]')]; }
+  function go(screen){
+    document.querySelectorAll('.app-screen').forEach(s => s.classList.toggle('active', s.dataset.screen === screen));
+    buttons().forEach(b => b.classList.toggle('active', b.dataset.screen === screen));
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+  function home(){ go('home'); }
+  function entries(){ go('entries'); }
+  function reports(){ go('reports'); }
+  function more(){ go('more'); }
+  function openAdd(){
+    go('entries');
+    setTimeout(()=>document.getElementById('entryKm')?.focus(),180);
+  }
+  function renderRecent(){
+    const box=document.getElementById('recentEntries'); if(!box || typeof DataStore==='undefined') return;
+    const map=riderMap();
+    const rows=[...DataStore.state.entries].sort((a,b)=>a.date!==b.date?b.date.localeCompare(a.date):entryTimestamp(b)-entryTimestamp(a)).slice(0,5);
+    if(!rows.length){ box.innerHTML='<div class="empty-state"><div class="empty-icon">＋</div><strong>No entries yet</strong><span>Add your first ride entry with the + button.</span></div>'; return; }
+    box.innerHTML=rows.map(e=>{const st=entryStatus(e);return `<div class="recent-item"><div><div class="recent-title">${esc(map[e.riderId]||'Unknown Rider')}</div><div class="recent-meta">${e.date} · ${money(e.km)} KM</div></div><div class="recent-right"><strong>৳${money(e.total)}</strong><span class="mini-status ${st}">${st}</span></div></div>`;}).join('');
+  }
+  return {go,home,entries,reports,more,openAdd,renderRecent};
+})();
+</script></body></html>
